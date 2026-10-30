@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "event_type": "sale.completed",
+  "event_id": "80cf28a1-0931-5dd4-98fb-0d0374dfb196",
+  "produced_at": "2026-10-30T03:00:01Z",
+  "sale": {
+    "source_system": "simulator",
+    "source_instance": "demo-register-01",
+    "branch_id": "BR001",
+    "business_date": "2026-10-30",
+    "receipt_id": "demo-001-000001",
+    "occurred_at": "2026-10-30T03:00:00Z",
+    "currency": "THB",
+    "gross_amount": "130.00",
+    "discount_amount": "10.00",
+    "net_amount": "120.00",
+    "tax_amount": "0.00",
+    "lines": [
+      {
+        "line_id": "1",
+        "product_id": "BREAD_VANILLA",
+        "quantity": 2,
+        "unit_price": "35.00",
+        "gross_amount": "70.00",
+        "discount_amount": "10.00",
+        "net_amount": "60.00",
+        "tax_amount": "0.00"
+      },
+      {
+        "line_id": "2",
+        "product_id": "SMOOTHIE_MANGO",
+        "quantity": 1,
+        "unit_price": "60.00",
+        "gross_amount": "60.00",
+        "discount_amount": "0.00",
+        "net_amount": "60.00",
+        "tax_amount": "0.00"
+      }
+    ],
+    "tax_mode": "not_provided"
+  }
+}

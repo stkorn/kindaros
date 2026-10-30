@@ -1,0 +1,15 @@
+.audit/
+.env
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+data/inbox/*
+data/reports/*
+!data/inbox/.gitkeep
+!data/reports/.gitkeep

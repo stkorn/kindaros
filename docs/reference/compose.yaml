@@ -1,0 +1,93 @@
+name: kinda-m1
+x-app: &app
+  image: kinda-m1-app:dev
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+  environment: &app-env
+    KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    POS_TOPIC: kinda.pos.sales.v1
+    PGHOST: postgres
+    PGPORT: "5432"
+    PGDATABASE: kinda
+    PGUSER: kinda_app
+    PGPASSWORD: ${APP_DB_PASSWORD:-local-app-only}
+    STREAM_EPOCH: ${STREAM_EPOCH:-b1cbe56c-c853-4b97-a2bb-623f547ac31b}
+    CHECKPOINT_PATH: ${CHECKPOINT_PATH:-/checkpoints/pos-sales-v1}
+    PYSPARK_PYTHON: /usr/local/bin/python
+    TZ: Asia/Bangkok
+services:
+  kafka:
+    image: apache/kafka:4.4.0
+    ports: ["127.0.0.1:9092:9092"]
+    environment:
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx512m
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+      - ./docs/reference/kafka.properties:/opt/kinda/server.properties:ro
+    entrypoint: ["/bin/bash", "-ec"]
+    command:
+      - |
+        if [ ! -f /var/lib/kafka/data/meta.properties ]; then
+          /opt/kafka/bin/kafka-storage.sh format --standalone -t "$${CLUSTER_ID}" -c /opt/kinda/server.properties
+        fi
+        exec /opt/kafka/bin/kafka-server-start.sh /opt/kinda/server.properties
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:29092 --list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+  postgres:
+    image: postgres:18.6-bookworm
+    ports: ["127.0.0.1:5432:5432"]
+    environment:
+      POSTGRES_DB: kinda
+      POSTGRES_USER: kinda_admin
+      POSTGRES_PASSWORD: ${ADMIN_DB_PASSWORD:-local-admin-only}
+    volumes: ["postgres-data:/var/lib/postgresql"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kinda_admin -d kinda"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+  bootstrap:
+    <<: *app
+    environment:
+      <<: *app-env
+      PGUSER: kinda_admin
+      PGPASSWORD: ${ADMIN_DB_PASSWORD:-local-admin-only}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-local-app-only}
+    command: ["kinda", "bootstrap"]
+    depends_on:
+      kafka: {condition: service_healthy}
+      postgres: {condition: service_healthy}
+    restart: "no"
+  stream:
+    <<: *app
+    command: ["kinda", "stream"]
+    volumes: ["spark-checkpoints:/checkpoints", "./data/reports:/reports:ro"]
+    depends_on:
+      bootstrap: {condition: service_completed_successfully}
+    restart: on-failure
+  simulator:
+    <<: *app
+    profiles: ["tools"]
+    volumes: ["./data/reports:/reports"]
+    command: ["kinda", "simulate", "--seed", "42", "--run-id", "demo-001", "--orders", "300", "--rate", "5"]
+    depends_on:
+      bootstrap: {condition: service_completed_successfully}
+  importer:
+    <<: *app
+    profiles: ["tools"]
+    volumes: ["./data/inbox:/inbox:ro", "./data/reports:/reports"]
+    command: ["kinda", "import-csv", "/inbox/sales.csv", "--mapping", "/inbox/mapping.json", "--dry-run"]
+    depends_on:
+      bootstrap: {condition: service_completed_successfully}
+volumes:
+  kafka-data:
+  postgres-data:
+  spark-checkpoints:
