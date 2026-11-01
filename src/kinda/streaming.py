@@ -16,6 +16,7 @@ def spark_session() -> SparkSession:
     return (SparkSession.builder.master("local[2]").appName("kinda-pos-sales-v1")
             .config("spark.jars", ",".join(str(path) for path in jars))
             .config("spark.sql.session.timeZone", "UTC")
+            .config("spark.sql.shuffle.partitions", "3")
             .config("spark.ui.enabled", "false").getOrCreate())
 
 
@@ -46,10 +47,11 @@ def run_stream(config: Config) -> None:
     try:
         source = (spark.readStream.format("kafka").option("kafka.bootstrap.servers", config.brokers)
                   .option("subscribe", config.topic).option("startingOffsets", "earliest")
-                  .option("failOnDataLoss", "true").option("maxOffsetsPerTrigger", "500").load())
-        query = (source.writeStream.foreachBatch(write_batch)
+                  .option("failOnDataLoss", "true").option("maxOffsetsPerTrigger", "250").load())
+        query = (source.writeStream.queryName("kinda-pos-sales-v1").outputMode("append")
+                 .foreachBatch(write_batch)
                  .option("checkpointLocation", str(config.checkpoint / "spark"))
-                 .trigger(processingTime="2 seconds").start())
+                 .trigger(processingTime="5 seconds").start())
         while query.isActive:
             progress = query.lastProgress
             temp = status_path.with_suffix(".tmp")

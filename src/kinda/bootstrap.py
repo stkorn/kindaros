@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import os
 from typing import Any
+from uuid import UUID
 
 import psycopg
 from confluent_kafka import KafkaException, TopicCollection
@@ -37,7 +39,7 @@ def kafka_metadata(config: Config, *, create: bool = False) -> dict[str, Any]:
         if actual[name].value != expected:
             raise ValueError(f"Topic config mismatch {name}: {actual[name].value} != {expected}")
     desc = admin.describe_topics(TopicCollection([config.topic]))[config.topic].result(15)
-    return {"cluster_id": metadata.cluster_id, "topic_id": str(desc.topic_id),
+    return {"cluster_id": metadata.cluster_id, "topic_id": str(UUID(bytes=base64.urlsafe_b64decode(str(desc.topic_id) + "=="))),
             "partitions": len(topic.partitions), "brokers":
             [{"host": b.host, "port": b.port} for b in metadata.brokers.values()]}
 
@@ -48,14 +50,7 @@ def migration_checksum() -> str:
 
 def bootstrap(config: Config) -> dict[str, Any]:
     metadata = kafka_metadata(config, create=True)
-    # Kafka UUIDs use base64 in protocol responses; confluent exposes canonical UUID strings.
-    import base64
-    from uuid import UUID
-    topic_id = metadata["topic_id"]
-    try:
-        topic_uuid = UUID(topic_id)
-    except ValueError:
-        topic_uuid = UUID(bytes=base64.urlsafe_b64decode(topic_id + "=="))
+    topic_uuid = UUID(metadata["topic_id"])
     with psycopg.connect() as conn:
         conn.execute("SELECT pg_advisory_xact_lock(789021)")
         conn.execute("CREATE TABLE IF NOT EXISTS public.schema_migrations "

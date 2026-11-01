@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any, Iterable
 
 import psycopg
+from psycopg import sql
 from psycopg.types.json import Jsonb
 
 from kinda.config import Config
@@ -25,7 +26,7 @@ class PostgresSink:
     def __init__(self, config: Config):
         self.config = config
         self.conn = psycopg.connect(autocommit=True)
-        locked = self.conn.execute("SELECT pg_try_advisory_lock(789022)").fetchone()
+        locked = self.conn.execute("SELECT pg_try_advisory_lock(1263092801, 1)").fetchone()
         if locked != (True,):
             self.conn.close()
             raise ValueError("Another ledger writer is active")
@@ -61,7 +62,6 @@ class PostgresSink:
                     data: dict[str, Any] = sale_object(sale)
                     header = {name: data[name] for name in data if name != "lines"}
                     header.update(event_id=envelope.event_id, semantic_hash=digest, canonical_sale=Jsonb(data))
-                    from psycopg import sql
                     names = list(header)
                     self.conn.execute(sql.SQL("INSERT INTO kinda.sale_events ({}) VALUES ({})").format(
                         sql.SQL(",").join(map(sql.Identifier, names)), sql.SQL(",").join(sql.Placeholder() for _ in names)),

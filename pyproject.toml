@@ -15,6 +15,7 @@ dependencies = [
 
 [dependency-groups]
 dev = ["hatchling==1.29.0", "pytest==9.2.0", "mypy==1.19.1", "types-jsonschema==4.26.0.20261006"]
+e2e = ["pytest==9.2.0", "confluent-kafka==2.16.1"]
 
 [project.scripts]
 kinda = "kinda.cli:main"
@@ -27,6 +28,7 @@ files = ["src/kinda"]
 [[tool.mypy.overrides]]
 module = ["confluent_kafka.*"]
 ignore_missing_imports = true
+implicit_reexport = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/kinda"]

@@ -15,34 +15,38 @@ from kinda.domain import decode_event, resource, semantic_hash
 from kinda.publisher import publish_sample
 
 
-def verify_sample(timeout: int, partition: int | None = None, offset: int | None = None) -> dict[str, Any]:
+def verify_sample(config: Config, timeout: int, partition: int | None = None,
+                  offset: int | None = None) -> dict[str, Any]:
     expected = decode_event(resource("sale.example.json"))
+    sale = expected.sale
+    expected_header = (semantic_hash(sale), sale.gross_amount, sale.discount_amount, sale.net_amount,
+                       len(sale.lines), sum(line.quantity for line in sale.lines))
+    expected_lines = [(line.line_id, line.product_id, line.quantity, line.unit_price, line.gross_amount,
+                       line.discount_amount, line.net_amount, line.tax_amount) for line in sale.lines]
     deadline = time.monotonic() + timeout
     while True:
         with psycopg.connect() as conn:
-            row = conn.execute("SELECT e.semantic_hash,e.gross_amount,e.discount_amount,e.net_amount,"
-                               "count(l.*),sum(l.quantity),sum(l.net_amount) FROM kinda.sale_events e "
-                               "JOIN kinda.sale_lines l USING(event_id) WHERE event_id=%s "
-                               "GROUP BY e.event_id", (expected.event_id,)).fetchone()
+            header = conn.execute("SELECT semantic_hash,gross_amount,discount_amount,net_amount,"
+                                  "(SELECT count(*) FROM kinda.sale_lines l WHERE l.event_id=e.event_id),"
+                                  "(SELECT sum(quantity) FROM kinda.sale_lines l WHERE l.event_id=e.event_id) "
+                                  "FROM kinda.sale_events e WHERE event_id=%s", (expected.event_id,)).fetchone()
             lines = conn.execute("SELECT line_id,product_id,quantity,unit_price,gross_amount,discount_amount,"
                                  "net_amount,tax_amount FROM kinda.sale_lines WHERE event_id=%s ORDER BY line_id",
                                  (expected.event_id,)).fetchall()
-            expected_lines = [(line.line_id, line.product_id, line.quantity, line.unit_price, line.gross_amount,
-                               line.discount_amount, line.net_amount, line.tax_amount) for line in expected.sale.lines]
             delivery = None
             if partition is not None and offset is not None:
                 delivery = conn.execute("SELECT outcome,canonical_event_id FROM kinda.deliveries "
                                         "WHERE stream_epoch=%s AND topic=%s AND partition_id=%s AND offset_id=%s",
-                                        (Config.load().epoch, Config.load().topic, partition, offset)).fetchone()
-            if row and (partition is None or delivery):
-                if delivery and (delivery[0] not in ("accepted", "duplicate") or delivery[1] != expected.event_id):
-                    raise ValueError("Sample delivery reconciliation mismatch")
-                if tuple(map(str, row)) != ("836bdd4d3773dd795ea1d875c3c3335e5298e3abd23db35c0b353306b5de5dad", "130.00", "10.00", "120.00", "2", "3", "120.00") or lines != expected_lines:
-                    raise ValueError("Sample reconciliation mismatch")
-                return {"verified": True, "event_id": str(expected.event_id), "semantic_hash": row[0],
-                        "gross": str(row[1]), "discount": str(row[2]), "net": str(row[3]),
-                        "lines": row[4], "units": row[5], "line_details": lines,
-                        "delivery_outcome": delivery[0] if delivery else None}
+                                        (config.epoch, config.topic, partition, offset)).fetchone()
+        if header and (partition is None or delivery):
+            if delivery and (delivery[0] not in ("accepted", "duplicate") or delivery[1] != expected.event_id):
+                raise ValueError("Sample delivery reconciliation mismatch")
+            if tuple(header) != expected_header or lines != expected_lines:
+                raise ValueError("Sample reconciliation mismatch")
+            return {"verified": True, "event_id": str(expected.event_id), "semantic_hash": header[0],
+                    "gross": str(header[1]), "discount": str(header[2]), "net": str(header[3]),
+                    "lines": header[4], "units": header[5], "line_details": lines,
+                    "delivery_outcome": delivery[0] if delivery else None}
         if time.monotonic() >= deadline:
             raise TimeoutError("Sample not committed before timeout")
         time.sleep(1)
@@ -71,6 +75,12 @@ def doctor(config: Config, *, require_stream: bool = True) -> dict[str, Any]:
     return {"doctor": "ready", "stream": require_stream, **metadata}
 
 
+def exit_code(command: str, exc: Exception) -> int:
+    if isinstance(exc, psycopg.Error):
+        return 4
+    return {"verify-sample": 5, "publish-sample": 3}.get(command, 4)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="kinda")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -91,7 +101,7 @@ def main() -> None:
         elif args.command == "verify-sample":
             if (args.partition is None) != (args.offset is None):
                 parser.error("--partition and --offset must be supplied together")
-            result = verify_sample(args.timeout, args.partition, args.offset)
+            result = verify_sample(config, args.timeout, args.partition, args.offset)
         elif args.command == "doctor":
             result = doctor(config)
         else:
@@ -105,4 +115,4 @@ def main() -> None:
             print(json.dumps(result, default=str))
     except Exception as exc:
         print(json.dumps({"error": type(exc).__name__, "message": str(exc)}), file=sys.stderr)
-        sys.exit(5 if args.command == "verify-sample" else 3 if args.command == "publish-sample" else 4)
+        sys.exit(exit_code(args.command, exc))
