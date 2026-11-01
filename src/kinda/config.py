@@ -11,6 +11,10 @@ class Config:
     epoch: UUID
     checkpoint: Path
 
+    @property
+    def status_path(self) -> Path:
+        return self.checkpoint / "kinda-status.json"
+
     @classmethod
     def load(cls) -> "Config":
         return cls(os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),

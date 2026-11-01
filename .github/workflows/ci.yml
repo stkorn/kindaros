@@ -12,8 +12,9 @@ jobs:
       COMPOSE_PROJECT_NAME: kinda-ci-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install uv
-        run: python3 -m pip install --user uv==0.13.4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.13.4"
       - name: Start stack
         run: make up
       - name: Static, unit and offline checks

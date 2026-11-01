@@ -1,7 +1,7 @@
 FROM python:3.12.14-slim-trixie@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f
 
 ENV PYTHONUNBUFFERED=1 PYSPARK_PYTHON=/usr/local/bin/python SPARK_LOCAL_IP=127.0.0.1
-RUN apt-get update && apt-get install -y --no-install-recommends openjdk-21-jre-headless ca-certificates && rm -rf /var/lib/apt/lists/* \
+RUN apt-get update && apt-get install -y --no-install-recommends openjdk-21-jre-headless=21.0.13+9-1~deb13u2 ca-certificates && rm -rf /var/lib/apt/lists/* \
     && ln -s "$(dirname $(dirname $(readlink -f $(which java))))" /opt/java
 ENV JAVA_HOME=/opt/java
 

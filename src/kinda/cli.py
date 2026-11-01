@@ -8,6 +8,7 @@ import time
 from typing import Any
 
 import psycopg
+from jsonschema import ValidationError
 
 from kinda.bootstrap import bootstrap, kafka_metadata, migration_checksum
 from kinda.config import Config
@@ -63,29 +64,34 @@ def doctor(config: Config, *, require_stream: bool = True) -> dict[str, Any]:
             raise ValueError("Product catalog incomplete")
         if conn.execute("SELECT stream_epoch FROM kinda.stream_sources WHERE source_name='pos-sales-v1'").fetchone() != (config.epoch,):
             raise ValueError("Stream binding missing")
+    config.checkpoint.mkdir(parents=True, exist_ok=True)
+    probe = config.checkpoint / f".doctor-{os.getpid()}"
+    probe.write_text("ready")
+    probe.unlink()
     if require_stream:
-        status_path = config.checkpoint / "kinda-status.json"
+        status_path = config.status_path
         status = json.loads(status_path.read_text())
         os.kill(status["pid"], 0)
         if not status["active"] or not status["progress"] or time.time() - status_path.stat().st_mtime > 30:
             raise ValueError("Stream is not active")
-        probe = config.checkpoint / f".doctor-{os.getpid()}"
-        probe.write_text("ready")
-        probe.unlink()
     return {"doctor": "ready", "stream": require_stream, **metadata}
 
 
 def exit_code(command: str, exc: Exception) -> int:
     if isinstance(exc, psycopg.Error):
         return 4
+    if command == "publish-sample" and isinstance(exc, (ValueError, ValidationError)):
+        return 2
     return {"verify-sample": 5, "publish-sample": 3}.get(command, 4)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="kinda")
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("bootstrap", "publish-sample", "stream", "offline-selftest", "doctor"):
+    for name in ("bootstrap", "publish-sample", "stream", "offline-selftest"):
         sub.add_parser(name)
+    sub.add_parser("doctor").add_argument("--skip-stream", action="store_true",
+                                          help="check dependencies without requiring an active stream query")
     verify = sub.add_parser("verify-sample")
     verify.add_argument("--timeout", type=int, default=120)
     verify.add_argument("--partition", type=int)
@@ -103,7 +109,7 @@ def main() -> None:
                 parser.error("--partition and --offset must be supplied together")
             result = verify_sample(config, args.timeout, args.partition, args.offset)
         elif args.command == "doctor":
-            result = doctor(config)
+            result = doctor(config, require_stream=not args.skip_stream)
         else:
             from kinda.streaming import offline_selftest, run_stream
             if args.command == "offline-selftest":

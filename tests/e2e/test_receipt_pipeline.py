@@ -114,3 +114,28 @@ def test_stream_runtime_role_cannot_modify_accepted_sales(statement: str) -> Non
     result = compose("exec", "-T", "stream", "python", "-c",
                      f"import psycopg; psycopg.connect().execute({statement!r})", check=False)
     assert result.returncode != 0 and "InsufficientPrivilege" in result.stderr
+
+
+def test_doctor_checks_dependencies_before_the_stream_starts() -> None:
+    report = json.loads(compose("run", "--rm", "--no-deps", "-T", "stream", "kinda", "doctor", "--skip-stream").stdout)
+    assert report["doctor"] == "ready" and report["stream"] is False
+
+
+def test_serving_views_read_back_the_sample_totals() -> None:
+    publish_and_verify()
+    daily = admin_sql("SELECT receipt_count,gross_sales,discounts,sales_after_discount_before_returns,"
+                      "receipts_without_tax_detail FROM kinda.v_branch_daily_sales WHERE source_system='simulator' "
+                      "AND branch_id='BR001' AND business_date=DATE '2026-10-30'")
+    assert daily == "1|130.00|10.00|120.00|1"
+    products = admin_sql("SELECT product_id,units,sales_after_discount_before_returns "
+                         "FROM kinda.v_branch_product_daily_sales WHERE source_system='simulator' "
+                         "AND business_date=DATE '2026-10-30' ORDER BY product_id")
+    assert products.splitlines() == ["BREAD_VANILLA|2|60.00", "SMOOTHIE_MANGO|1|60.00"]
+
+
+def test_batch_log_carries_observability_fields() -> None:
+    publish_and_verify()
+    batches = [json.loads(line.split("|", 1)[-1]) for line in compose("logs", "--no-color", "stream").stdout.splitlines()
+               if '"batch_id"' in line]
+    assert {"service", "query_name", "batch_id", "stream_epoch", "input_count", "accepted", "duplicate",
+            "skipped_deliveries", "commit_duration_ms"} <= batches[-1].keys()

@@ -22,11 +22,14 @@ class KafkaRecord:
     timestamp: datetime | None
 
 
+WRITER_LOCK = (1263092801, 1)
+
+
 class PostgresSink:
     def __init__(self, config: Config):
         self.config = config
         self.conn = psycopg.connect(autocommit=True)
-        locked = self.conn.execute("SELECT pg_try_advisory_lock(1263092801, 1)").fetchone()
+        locked = self.conn.execute("SELECT pg_try_advisory_lock(%s, %s)", WRITER_LOCK).fetchone()
         if locked != (True,):
             self.conn.close()
             raise ValueError("Another ledger writer is active")
@@ -38,7 +41,7 @@ class PostgresSink:
     def close(self) -> None:
         self.conn.close()
 
-    def apply(self, records: Iterable[KafkaRecord], batch_id: int) -> dict[str, int]:
+    def apply(self, records: Iterable[KafkaRecord]) -> dict[str, int]:
         report = {"accepted": 0, "duplicate": 0, "skipped_deliveries": 0}
         with self.conn.transaction():
             for record in records:

@@ -12,7 +12,7 @@ Digest คือ SHA-256 ของ OCI image index ที่ `docker buildx imag
 | `postgres:18.6-bookworm` | `sha256:5c4783a8cc3f0074912164f94dfa1be4e043438f0f707cf968d7af9a0d31a2c8` | linux/amd64, linux/arm64 |
 | `python:3.12.14-slim-trixie` | `sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f` | linux/amd64, linux/arm64 |
 
-`compose.yaml` และ `docker/Dockerfile` pin digest เหล่านี้ JDK มาจาก Debian package `openjdk-21-jre-headless` ของ base image (runtime ที่ทดสอบ: 21.0.13) ยังไม่ได้ pin package version
+`compose.yaml` และ `docker/Dockerfile` pin digest เหล่านี้ JDK pin เป็น Debian package `openjdk-21-jre-headless=21.0.13+9-1~deb13u2` เมื่อ Debian security update ถอด version นี้ออกจาก mirror build จะ fail ชัดเจน ต้องเลือก version ใหม่พร้อมทดสอบ ไม่ fallback เงียบ
 
 ## Python
 

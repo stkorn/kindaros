@@ -14,6 +14,7 @@ from psycopg import sql
 from kinda.config import Config
 from kinda.domain import resource
 
+MIGRATION_LOCK = 789021
 TOPIC_CONFIG = {"min.insync.replicas": "1", "cleanup.policy": "delete",
                 "compression.type": "uncompressed", "retention.ms": "604800000"}
 
@@ -52,7 +53,7 @@ def bootstrap(config: Config) -> dict[str, Any]:
     metadata = kafka_metadata(config, create=True)
     topic_uuid = UUID(metadata["topic_id"])
     with psycopg.connect() as conn:
-        conn.execute("SELECT pg_advisory_xact_lock(789021)")
+        conn.execute("SELECT pg_advisory_xact_lock(%s)", (MIGRATION_LOCK,))
         conn.execute("CREATE TABLE IF NOT EXISTS public.schema_migrations "
                      "(version integer PRIMARY KEY, checksum text NOT NULL)")
         row = conn.execute("SELECT checksum FROM public.schema_migrations WHERE version=1").fetchone()
