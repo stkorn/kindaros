@@ -1,0 +1,37 @@
+[build-system]
+requires = ["hatchling==1.29.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "kinda"
+version = "0.1.0"
+requires-python = "==3.12.*"
+dependencies = [
+  "confluent-kafka==2.16.1",
+  "psycopg[binary]==3.3.6",
+  "pyspark==4.2.1",
+  "jsonschema[format]==4.26.0",
+]
+
+[dependency-groups]
+dev = ["hatchling==1.29.0", "pytest==9.2.0", "mypy==1.19.1", "types-jsonschema==4.26.0.20261006"]
+
+[project.scripts]
+kinda = "kinda.cli:main"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src/kinda"]
+
+[[tool.mypy.overrides]]
+module = ["confluent_kafka.*"]
+ignore_missing_imports = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kinda"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"contracts/pos-event-v1.schema.json" = "kinda/resources/pos-event-v1.schema.json"
+"contracts/sale.example.json" = "kinda/resources/sale.example.json"
+"migrations/001_initial.sql" = "kinda/resources/001_initial.sql"
